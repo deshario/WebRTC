@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WebRTC</title>
+</head>
+<style>
+
+  body{
+    font-family: 'Courier New', monospace;
+  }
+
+  .chatBox{
+    display: flex;
+    justify-content: space-between;
+    padding: 10px;
+  }
+
+  fieldset{
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+  }
+
+  .aliceChatList, .bobChatList{
+    width: 100%;
+    margin-left:35px;
+  }
+
+  p {
+    color: #EEEEEE;
+    margin-block-start: unset;
+    margin-block-end: unset;
+    font-weight: 800;
+    font-size: 14pt;
+    padding:10px;
+  }
+
+  .aliceChatList p { background : #1E88E5; }
+
+  .bobChatList p { background : #4CAF50; }
+
+  ol li {
+    color: white;
+    padding:10px;
+    margin-top:5px;
+  }
+
+  ol li::marker { color: black;}
+
+  .aliceChatList ol li { background : #1E88E5; }
+
+  .bobChatList ol li { background: #4CAF50; }
+
+</style>
+<body>
+  <script type="text/javascript">
+    
+  let alice, bob, dataChannel;
+
+  const manageChat = ({ message, isAlice = true }) => {
+    const targetUserList = isAlice ? '.aliceChatList' : '.bobChatList'
+    const aliceChatList = document.querySelector(`${targetUserList} ol`);
+    const listViewItem = document.createElement("li");
+    const elem = document.createTextNode(message);
+    listViewItem.appendChild(elem);
+    aliceChatList.appendChild(listViewItem);
+  }
+
+  const initWebRTC = async () => {
+    alice = new RTCPeerConnection()
+    bob = new RTCPeerConnection()
+    dataChannel = alice.createDataChannel("channel");
+
+    dataChannel.onmessage = event => {
+      console.log('event',event)
+      console.log("Incoming message from bob\n\n",event.data);
+      manageChat({ message: event.data })
+    }
+    dataChannel.onopen = event => console.log("alice: connection opened")
+
+    bob.ondatachannel = event => {
+      bob.dataChannel = event.channel;
+      bob.dataChannel.onmessage = event => {
+        console.log("Incoming message from alice\n\n",event.data);
+        manageChat({ message: event.data, isAlice: false })
+      }
+      bob.dataChannel.onopen = event => console.log("bob: connection opened")
+    }
+
+    alice.onicecandidate = event => {
+      bob.setRemoteDescription(alice.localDescription)
+    }
+
+    const offer = await alice.createOffer()
+    await alice.setLocalDescription(offer)
+    await bob.setRemoteDescription(alice.localDescription)
+
+    const answer = await bob.createAnswer();
+    await bob.setLocalDescription(new RTCSessionDescription(answer))
+    await alice.setRemoteDescription(bob.localDescription)
+  }
+
+  const broadCastMsg = (isAlice = true) => {
+    const selector = isAlice ? "#aliceInput" : "#bobInput";
+    const input = document.querySelector(selector);
+    if(!input.value) {
+      alert('Please type something');
+      return;
+    }
+    const channel = isAlice ? dataChannel : bob.dataChannel;
+    channel.send(input.value);
+    input.value = '';
+  }
+
+  initWebRTC()
+
+</script>
+  <h1>WebRTC Chats</h1>
+  <div class="chatBox">
+    <fieldset>
+      <legend>Alice</legend>
+      <div class="chatInput">
+        <form onsubmit="broadCastMsg()" action="#">
+          <input type="text" id="aliceInput" /><br><br>
+          <input type="submit" value="Publish"/>
+        </form>
+      </div>
+      <div class="aliceChatList">
+        <p>Messages from Bob</p>
+        <ol></ol>
+      </div>
+    </fieldset>
+  
+    <fieldset>
+      <legend>Bob</legend>
+        <form onsubmit="broadCastMsg(false)" action="#">
+          <input type="text" id="bobInput" /><br><br>
+          <input type="submit" value="Publish"/>
+        </form>
+      <div class="bobChatList">
+        <p>Messages from Alice</p>
+        <ol></ol>
+      </div>
+    </fieldset>
+  </div>
+</body>
+</html>
